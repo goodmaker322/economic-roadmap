@@ -1,15 +1,12 @@
 (function () {
   "use strict";
 
-  // ---------- CONSTANTS & STATE ----------
   const DEPOSIT = 200_000_000;
   let currentBasePrice = 7.4e9;
   let activePlanId = "full";
   let cashflowChart, growthChart, comparisonChart;
   let calcTimeout = null;
-  let isLoading = false;
 
-  // DOM elements
   const totalPriceInput = document.getElementById("totalPrice");
   const displayLand = document.getElementById("displayLand");
   const displayBuild = document.getElementById("displayBuild");
@@ -38,7 +35,6 @@
   const validationMsg = document.getElementById("validationMessage");
   const quickComparisonRow = document.getElementById("quickComparisonRow");
 
-  // Plan definitions
   const planDefinitions = [
     {
       id: "full",
@@ -84,7 +80,6 @@
     },
   ];
 
-  // ---------- HELPER: Update land/build display ----------
   function updateLandBuildDisplay() {
     const total = parseFloat(totalPriceInput.value) * 1e9;
     if (isNaN(total) || total <= 0) return;
@@ -95,7 +90,6 @@
   totalPriceInput.addEventListener("input", updateLandBuildDisplay);
   updateLandBuildDisplay();
 
-  // ---------- RENDER PLAN CARDS ----------
   function renderPlanCards() {
     planSelector.innerHTML = "";
     planDefinitions.forEach((def) => {
@@ -121,7 +115,6 @@
   }
   renderPlanCards();
 
-  // ---------- CALCULATION LOGIC (unchanged core) ----------
   function calculatePaymentSchedule(planId, basePrice) {
     const landPrice = basePrice * 0.7;
     const buildPrice = basePrice * 0.3;
@@ -129,7 +122,6 @@
       totalCost = 0,
       pros = "",
       cons = "";
-
     if (planId === "full") {
       const discounted = basePrice * 0.925;
       totalCost = discounted;
@@ -243,7 +235,6 @@
     };
   }
 
-  // ---------- VALIDATION ----------
   function validateInputs() {
     let valid = true;
     let msg = "";
@@ -262,7 +253,7 @@
     return valid;
   }
 
-  // ---------- RENDER UI & CHARTS ----------
+  // Cập nhật biểu đồ với cấu hình thân thiện mobile
   function renderCharts(basePrice, holdingYears, growthRate, monthlyRent) {
     const years = [],
       cashflows = [],
@@ -274,6 +265,33 @@
       val *= 1 + growthRate / 100;
       growthValues.push(val);
     }
+
+    // Cấu hình chung cho mobile: font lớn hơn, tooltip rõ
+    const commonOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              let val = ctx.raw;
+              return `${(val / 1e9).toFixed(2)} tỷ`;
+            },
+          },
+        },
+        legend: { display: false },
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: (value) => (value / 1e9).toFixed(1) + "B",
+            font: { size: 11, weight: "500" },
+          },
+        },
+        x: { ticks: { font: { size: 11 } } },
+      },
+    };
+
     const ctx1 = document.getElementById("cashflowChart").getContext("2d");
     if (cashflowChart) cashflowChart.destroy();
     cashflowChart = new Chart(ctx1, {
@@ -291,15 +309,7 @@
           },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: {
-          tooltip: {
-            callbacks: { label: (ctx) => `${ctx.raw.toFixed(2)} tỷ` },
-          },
-        },
-      },
+      options: commonOptions,
     });
 
     const ctx2 = document.getElementById("growthChart").getContext("2d");
@@ -314,17 +324,11 @@
             data: growthValues,
             borderColor: "#0f7b4e",
             tension: 0.3,
+            pointBackgroundColor: "#0f7b4e",
           },
         ],
       },
-      options: {
-        responsive: true,
-        plugins: {
-          tooltip: {
-            callbacks: { label: (ctx) => `${(ctx.raw / 1e9).toFixed(2)} tỷ` },
-          },
-        },
-      },
+      options: commonOptions,
     });
 
     const planIds = [
@@ -355,25 +359,28 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           tooltip: {
             callbacks: { label: (ctx) => `${ctx.raw.toFixed(2)} tỷ` },
           },
+        },
+        scales: {
+          y: { ticks: { callback: (val) => val.toFixed(1) + "B" } },
         },
       },
     });
   }
 
   function updateQuickComparison(basePrice) {
-    const allPlans = planDefinitions.map((def) => {
-      const { totalCost } = calculatePaymentSchedule(def.id, basePrice);
-      return { id: def.id, name: def.name, cost: totalCost };
-    });
+    const allPlans = planDefinitions.map((def) => ({
+      id: def.id,
+      name: def.name,
+      cost: calculatePaymentSchedule(def.id, basePrice).totalCost,
+    }));
     allPlans.sort((a, b) => a.cost - b.cost);
-    const bestCost = allPlans[0];
-    let html = `<span style="font-weight:600;"><i class="fas fa-medal"></i> Chi phí thấp nhất: ${bestCost.name} (${(bestCost.cost / 1e9).toFixed(2)} tỷ)</span>`;
-    html += ` <span class="comparison-badge badge-best"><i class="fas fa-crown"></i> Tối ưu</span>`;
-    quickComparisonRow.innerHTML = html;
+    const best = allPlans[0];
+    quickComparisonRow.innerHTML = `<span style="font-weight:600;"><i class="fas fa-medal"></i> Chi phí thấp nhất: ${best.name} (${(best.cost / 1e9).toFixed(2)} tỷ)</span> <span class="comparison-badge badge-best"><i class="fas fa-crown"></i> Tối ưu</span>`;
   }
 
   function renderResults(planId) {
@@ -439,7 +446,6 @@
     resultsPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  // ---------- REAL-TIME + DEBOUNCE ----------
   function debouncedRecalculate() {
     if (calcTimeout) clearTimeout(calcTimeout);
     const btnSpan = calculateBtn.querySelector("span");
@@ -458,7 +464,6 @@
     }, 300);
   }
 
-  // Attach real-time listeners
   [
     totalPriceInput,
     holdingYearsInput,
@@ -471,7 +476,6 @@
     debouncedRecalculate();
   });
 
-  // Initialize
   window.addEventListener("load", () => {
     setTimeout(() => {
       renderResults(activePlanId);

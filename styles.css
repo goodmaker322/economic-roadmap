@@ -251,7 +251,6 @@ h2 i {
     margin-top: var(--space-2);
 }
 
-/* Sticky summary panel (right side) */
 .sticky-summary {
     position: sticky;
     top: 20px;
@@ -277,20 +276,45 @@ h2 i {
     color: transparent;
 }
 
-.profit-text {
-    color: var(--color-profit);
-    font-weight: 700;
+/* Chart containers – CẢI TIẾN CHO MOBILE */
+.chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
 }
 
-.cost-text {
-    color: var(--color-cost);
+.chart-card {
+    background: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(8px);
+    border-radius: 24px;
+    padding: 16px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-.info-text {
-    color: var(--color-info);
+.chart-card canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 220px;
 }
 
-/* Comparison badges */
+/* Mobile: xếp dọc, tăng chiều cao canvas */
+@media (max-width: 768px) {
+    .chart-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+
+    .chart-card canvas {
+        max-height: 260px !important;
+    }
+}
+
+/* Đảm bảo canvas không bị bóp méo */
+.chart-wrapper {
+    width: 100%;
+}
+
+/* Comparison badge */
 .comparison-badge {
     display: inline-flex;
     align-items: center;
@@ -302,40 +326,7 @@ h2 i {
     gap: 6px;
 }
 
-.badge-best {
-    background: #0f7b4e20;
-    color: #0f7b4e;
-    border-left: 4px solid #0f7b4e;
-}
-
-/* Tooltip */
-.tooltip-icon {
-    margin-left: 6px;
-    color: var(--color-info);
-    font-size: 0.9rem;
-    cursor: help;
-    border-bottom: 1px dashed currentColor;
-}
-
-/* Loading state */
-.loading-indicator {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: white;
-    animation: spin 0.8s linear infinite;
-    margin-right: 8px;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* Responsive */
+/* Responsive chung */
 @media (max-width: 1024px) {
     .investment-panel {
         grid-template-columns: repeat(2, 1fr);
@@ -370,18 +361,6 @@ h2 i {
     }
 }
 
-/* Chart containers */
-canvas {
-    max-height: 220px;
-    width: 100% !important;
-}
-
-.chart-wrapper {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 24px;
-    padding: 16px;
-}
-
 /* tap target min 44px */
 button,
 .plan-card,
@@ -389,13 +368,6 @@ button,
     min-height: 48px;
 }
 
-@media (max-width: 768px) {
-    .plan-card {
-        min-height: 100px;
-    }
-}
-
-/* animations */
 .fade-in {
     animation: fadeIn 0.3s ease;
 }
@@ -410,7 +382,6 @@ button,
     }
 }
 
-/* additional polish */
 .schedule-table th {
     text-align: left;
     padding: 12px 8px;
@@ -421,18 +392,4 @@ button,
 .schedule-table td {
     padding: 10px 8px;
     border-bottom: 1px solid #e2e8f0;
-}
-
-.tooltip-icon:hover {
-    opacity: 0.8;
-}
-
-#quickComparisonRow .comparison-badge {
-    background: #eef3fa;
-}
-
-@media (max-width: 640px) {
-    .results-grid .sticky-summary {
-        margin-top: 20px;
-    }
 }
