@@ -2,341 +2,196 @@
 <html lang="vi">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VINHOMES HẢI VÂN BAY | Advisory Flow Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>ROI Bất Động Sản (Tỷ lệ lợi nhuận trên đầu tư )</title>
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
         rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-    <div id="loader">
-        <div class="loader-content">
-            <div class="spinner"></div>
-            <p>ĐANG KHỞI TẠO LỘ TRÌNH TƯ VẤN...</p>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="glass-panel" style="padding: 20px 28px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                <h1><i class="fas fa-building-columns"></i> Kịch bản đầu tư Vinhomes Hải Vân Bay <span
+                        class="badge">v1.0</span>
+                </h1>
+                <div style="display: flex; gap: 16px; font-size: 0.9rem;">
+                    <span><i class="fas fa-circle-check" style="color: #2a4b7c;"></i> Cọc 200tr</span>
+                    <span><i class="fas fa-chart-pie"></i> Đất ~70% · Xây
+                        ~30%</span>
+                </div>
+            </div>
+            <p style="color: #3e4a5e; margin-top: 8px;">Mô phỏng chính xác ·
+                tối ưu dòng tiền & lợi nhuận</p>
+        </div>
+
+        <!-- INPUT GIÁ BÁN -->
+        <div class="glass-panel">
+            <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px;">
+                <div style="min-width: 260px; flex:2;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;"><i class="fas fa-tag"></i> Giá
+                        bán BĐS (tỷ VND)
+                        <span class="tooltip-icon" title="Giá trị căn hộ/biệt thự trước thuế phí"><i
+                                class="far fa-question-circle"></i></span>
+                    </label>
+                    <input type="number" id="totalPrice" value="7.4" step="0.1" min="0.5" max="50"
+                        style="font-size: 1.8rem; font-weight: 700; padding: 16px 24px; border-radius: 30px;">
+                </div>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto;">
+                    <div><span style="opacity:0.8;">Đất (70%):</span>
+                        <strong id="displayLand">5.18</strong> tỷ
+                    </div>
+                    <div><span style="opacity:0.8;">Xây (30%):</span>
+                        <strong id="displayBuild">2.22</strong> tỷ
+                    </div>
+                    <div><span style="opacity:0.8;">Cọc:</span>
+                        <strong>200</strong> tr
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHỌN PHƯƠNG ÁN THANH TOÁN -->
+        <div class="glass-panel">
+            <h2><i class="fas fa-credit-card"></i> Chính sách thanh
+                toán</h2>
+            <div class="plan-selector" id="planSelector"></div>
+            <!-- Quick comparison badges (dynamic) -->
+            <div id="quickComparisonRow"
+                style="margin-top: 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center;"></div>
+        </div>
+
+        <!-- THIẾT LẬP ĐẦU TƯ -->
+        <div class="glass-panel">
+            <h2><i class="fas fa-chart-line"></i> Chiến lược nắm giữ & khai
+                thác</h2>
+            <div class="investment-panel">
+                <div class="input-group"><label><i class="fas fa-calendar-alt"></i> Số năm nắm giữ
+                        <span class="tooltip-icon" title="Thời gian đầu tư dự kiến"><i
+                                class="far fa-question-circle"></i></span></label><input type="number" id="holdingYears"
+                        value="5" min="1" max="30" step="1"></div>
+                <div class="input-group"><label><i class="fas fa-arrow-trend-up"></i> Tăng trưởng
+                        (%/năm)</label><input type="number" id="growthRate" value="8.0" min="0" max="30" step="0.5">
+                </div>
+                <div class="input-group"><label><i class="fas fa-sack-dollar"></i> Tỷ suất thuê
+                        (%/năm)</label><input type="number" id="rentalYield" value="5.0" min="0" max="15" step="0.1">
+                </div>
+                <div class="input-group"><label><i class="fas fa-clock"></i>
+                        Bắt đầu khai thác (tháng)</label><input type="number" id="cashflowStartMonth" value="9" min="0"
+                        max="48" step="1"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                <button class="btn-primary" id="calculateBtn"><i class="fas fa-calculator"></i> <span>PHÂN TÍCH CHI
+                        TIẾT</span></button>
+            </div>
+            <!-- inline error area -->
+            <div id="validationMessage" style="min-height: 24px; margin-top: 12px; color: #c2410c; font-weight: 500;">
+            </div>
+        </div>
+
+        <!-- KẾT QUẢ PANEL -->
+        <div class="glass-panel fade-in" id="resultsPanel" style="display: none;">
+            <div style="display: flex; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+                <h2 style="margin-bottom: 0; border: none;"><i class="fas fa-rectangle-list"></i> Kết quả phân
+                    tích</h2>
+                <span id="selectedPlanTag"
+                    style="margin-left: 20px; background: #1e1f2a; color: white; padding: 8px 22px; border-radius: 40px; font-weight: 500;"></span>
+            </div>
+            <div class="results-grid">
+                <!-- LEFT: schedule -->
+                <div>
+                    <h3>📋 Lịch thanh toán</h3>
+                    <div style="max-height: 380px; overflow-y: auto; padding-right: 6px;">
+                        <table class="schedule-table" id="scheduleTableBody"
+                            style="width:100%; border-collapse:collapse;"></table>
+                    </div>
+                    <div style="margin-top: 20px; background: #f8fafd; padding: 18px; border-radius: 24px;">
+                        <span style="font-weight: 600;">Tổng chi phí theo
+                            PA: </span>
+                        <span id="totalPlanCost" style="font-size: 1.8rem; font-weight: 700; color: #1e1f2a;">0</span>
+                        <span>tỷ VND</span>
+                    </div>
+                </div>
+                <!-- RIGHT: sticky summary -->
+                <div class="sticky-summary">
+                    <div class="metric-box">
+                        <div style="display: flex; justify-content: space-between;"><span><i
+                                    class="fas fa-building"></i> Giá trị BĐS
+                                sau <span id="yearsHoldingSpan">5</span>
+                                năm</span><span id="futureValue" style="font-weight: 700; font-size: 1.4rem;">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 12px;"><span><i
+                                    class="fas fa-money-bill-wave"></i> Tổng
+                                dòng tiền thuê</span><span id="totalRentalIncome" style="font-weight: 600;">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px;"><span><i
+                                    class="fas fa-arrow-down"></i> Chi phí
+                                đầu tư (PA)</span><span id="totalCostDisplay" style="font-weight: 600;">0</span></div>
+                        <hr style="margin: 22px 0; border-color:#d0d9e8;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline;"><span
+                                style="font-size:1.2rem; font-weight:700;">LỢI
+                                NHUẬN RÒNG</span><span id="netProfit" class="highlight-number">0</span></div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px;"><span>Tỷ
+                                suất lợi
+                                nhuận/vốn</span><span id="roiPercentage"
+                                style="font-weight: 700; font-size:1.3rem;">0%</span></div>
+                    </div>
+                    <div class="metric-box" style="background: rgba(42,75,124,0.03);">
+                        <div style="display: flex; gap: 10px; margin-bottom: 12px;"><i class="fas fa-lightbulb"
+                                style="color:#e6b800;"></i><span style="font-weight:700;">PHÂN TÍCH CHUYÊN
+                                SÂU</span>
+                        </div>
+                        <div id="analysisText" class="analysis-text">Chọn
+                            phương án và nhấn phân tích.</div>
+                    </div>
+                    <div style="display: flex; gap: 20px; margin-top: 12px;">
+                        <div><i class="fas fa-circle-check" style="color:#0f7b4e;"></i> <span id="prosText"></span>
+                        </div>
+                        <div><i class="fas fa-circle-exclamation" style="color:#b6560b;"></i> <span
+                                id="consText"></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BIỂU ĐỒ & SO SÁNH -->
+            <div style="margin-top: 40px;">
+                <h2><i class="fas fa-chart-pie"></i> Phân tích trực
+                    quan</h2>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                    <div class="chart-wrapper"><canvas id="cashflowChart"></canvas>
+                        <p style="text-align:center; margin-top:8px;">Dòng
+                            tiền thuê hàng năm</p>
+                    </div>
+                    <div class="chart-wrapper"><canvas id="growthChart"></canvas>
+                        <p style="text-align:center; margin-top:8px;">Tăng
+                            trưởng giá trị BĐS</p>
+                    </div>
+                </div>
+                <div style="margin-top:30px;" class="chart-wrapper"><canvas id="comparisonChart"></canvas>
+                    <p style="text-align:center; margin-top:8px;">So sánh
+                        tổng chi phí các phương án</p>
+                </div>
+                <div id="bestPlanRecommendation"
+                    style="margin-top: 24px; font-weight: 600; padding: 12px 20px; background: rgba(42,75,124,0.05); border-radius: 40px;">
+                </div>
+            </div>
         </div>
     </div>
-
-    <div class="app-shell">
-        <aside class="sidebar">
-            <div class="brand-card">
-                <h1 style="text-align: center; color: rgb(18, 214, 35);">
-                    <div class="brand-logo">Economic Roadmap</div>
-                </h1>
-                <div class="brand-text" style="text-align: center; margin-top: 10px;">
-                    <h2>VINHOMES HẢI VÂN BAY</h2>
-                    <p>Financial Planning Roadmap</p>
-                </div>
-            </div>
-
-            <div class="control-frame" style="margin: 40px;">
-                <div class="frame-header d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <h3 class="mb-0">Thiết lập dữ liệu đầu vào</h3>
-                    </div>
-                </div>
-
-                <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Giá gốc niêm yết</label>
-                            <div class="input-wrap">
-                                <input type="number" id="basePrice" value="15" step="0.1">
-                                <span>Tỷ</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Phương thức thanh toán</label>
-                            <div class="select-wrap">
-                                <select id="investMethod">
-                                    <option value="tts">Thanh toán sớm (CK 7.5%)</option>
-                                    <option value="gian24">Thanh toán giãn 24 tháng (+10%)</option>
-                                    <option value="gian36">Thanh toán giãn 36 tháng (+15%)</option>
-                                    <option value="htls70" selected>Vay HTLS 70%</option>
-                                    <option value="htls80">Vay HTLS 80%</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6 htls-only">
-                        <div class="form-group">
-                            <label>Thời gian HTLS 0%</label>
-                            <div class="select-wrap">
-                                <select id="htlsTime">
-                                    <option value="18">18 tháng</option>
-                                    <option value="24">24 tháng</option>
-                                    <option value="30">30 tháng</option>
-                                    <option value="36" selected>36 tháng</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6 htls-only">
-                        <div class="form-group">
-                            <label>Lãi suất sau HTLS</label>
-                            <div class="input-wrap">
-                                <input type="number" id="floatRate" value="11.5" step="0.1">
-                                <span>%/năm</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6 htls-only">
-                        <div class="form-group">
-                            <label>Thời hạn vay</label>
-                            <div class="input-wrap">
-                                <input type="number" id="loanYears" value="20" step="1">
-                                <span>Năm</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Số phòng khai thác</label>
-                            <div class="input-wrap">
-                                <input type="number" id="roomCount" value="4" step="1">
-                                <span>Phòng</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Giá thuê / phòng / tháng</label>
-                            <div class="input-wrap">
-                                <input type="number" id="rentPerRoom" value="8" step="0.1">
-                                <span>Triệu</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Tỷ lệ lấp đầy</label>
-                            <div class="input-wrap">
-                                <input type="number" id="occupancyRate" value="85" step="1">
-                                <span>%</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                        <div class="form-group">
-                            <label>Chi phí vận hành / tháng</label>
-                            <div class="input-wrap">
-                                <input type="number" id="operatingCost" value="5" step="0.1">
-                                <span>Triệu</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="form-group">
-                            <label>Tăng trưởng kỳ vọng <b id="growthLabel">12%</b></label>
-                            <input type="range" id="growthRange" min="2" max="25" value="12" class="w-100">
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="form-group">
-                            <label>Kịch bản thận trọng <b id="stressGrowthLabel">6%</b></label>
-                            <input type="range" id="stressGrowthRange" min="0" max="15" value="6" class="w-100">
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="form-group gift-box">
-                            <label class="checkbox-line">
-                                <input type="checkbox" id="applyGifts" checked>
-                                <span class="fake-check"></span>
-                                <span>Khấu trừ quà tặng vào vốn đầu tư thực tế</span>
-                            </label>
-                            <small>Áp dụng: Vinmec 100 triệu + VinClub 0.9% giá gốc</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flow-frame" style="margin: 40px;">
-                <div class="frame-header">
-                    <div>
-                        <h3>Lộ trình tư vấn</h3>
-                    </div>
-                </div>
-
-                <div class="step-buttons step-buttons-grid">
-                    <button class="step-btn active" data-step="1">Bước 1 · Cấu trúc vốn</button>
-                    <button class="step-btn" data-step="2">Bước 2 · Dòng tiền</button>
-                    <button class="step-btn" data-step="3">Bước 3 · Tăng trưởng</button>
-                    <button class="step-btn" data-step="4">Bước 4 · Rủi ro</button>
-                </div>
-
-                <button class="btn-primary" id="analyzeBtn">CẬP NHẬT PHÂN TÍCH</button>
-            </div>
-
-            <div class="advisor-card" style="margin: 40px;">
-                <div class="advisor-mark"></div>
-                <div>
-                    <p>Chuyên viên tư vấn</p>
-                    <h4>LÊ QUANG DŨNG</h4>
-                    <span>Tư vấn đầu tư & tài chính bất động sản</span>
-                </div>
-            </div>
-        </aside>
-
-        <main class="main-content" style="margin: 40px;">
-            <header class="hero-card">
-                <div>
-                    <h1>Phân tích theo từng bước để tư vấn rõ ràng, trực quan và không bị rối</h1>
-                    <p class="hero-sub">
-                        Dashboard này chia rõ cấu trúc vốn, dòng tiền, tăng trưởng và quản trị rủi ro thành từng bước
-                        để khách hàng dễ theo dõi và ra quyết định.
-                    </p>
-                </div>
-                <div class="hero-badge">STEP FLOW</div>
-            </header>
-
-            <section class="summary-grid">
-                <article class="summary-card">
-                    <label>Vốn tự có thực tế</label>
-                    <h2 id="equityVal">--</h2>
-                    <p id="policyNote">Đang chờ dữ liệu...</p>
-                </article>
-
-                <article class="summary-card featured">
-                    <label>Giá trị tài sản sau 36 tháng</label>
-                    <h2 id="asset36Val">--</h2>
-                    <p id="profit36Val">--</p>
-                </article>
-
-                <article class="summary-card">
-                    <label>Dòng tiền ròng hàng tháng</label>
-                    <h2 id="netMonthlyVal">--</h2>
-                    <p id="loanPressureNote">--</p>
-                </article>
-
-                <article class="summary-card">
-                    <label>Khoản trả sau HTLS</label>
-                    <h2 id="monthlyPaymentVal">--</h2>
-                    <p id="paymentModeNote">--</p>
-                </article>
-            </section>
-
-            <section class="step-panel active" id="step-panel-1">
-                <div class="panel-head">
-                    <div>
-                        <h3>Cấu trúc vốn & phương án sở hữu</h3>
-                    </div>
-                </div>
-
-                <div class="analysis-layout">
-                    <div class="chart-side">
-                        <div class="chart-card">
-                            <canvas id="capitalChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="content-side">
-                        <div class="text-card">
-                            <h4>Giải thích chiến lược vốn</h4>
-                            <div id="capitalReport" class="report-content"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="step-panel" id="step-panel-2">
-                <div class="panel-head">
-                    <div>
-                        <h3>Dòng tiền khai thác & áp lực tài chính</h3>
-                    </div>
-                </div>
-
-                <div class="analysis-layout">
-                    <div class="chart-side">
-                        <div class="chart-card">
-                            <canvas id="cashflowChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="content-side">
-                        <div class="text-card">
-                            <h4>Phân tích dòng tiền theo tháng</h4>
-                            <div id="cashflowReport" class="report-content"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="step-panel" id="step-panel-3">
-                <div class="panel-head">
-                    <div>
-                        <h3>Tăng trưởng tài sản & hiệu suất vốn</h3>
-                    </div>
-                </div>
-
-                <div class="analysis-layout">
-                    <div class="chart-side">
-                        <div class="chart-card">
-                            <canvas id="growthChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="content-side">
-                        <div class="text-card">
-                            <h4>Phân tích lợi nhuận & ROE</h4>
-                            <div id="growthReport" class="report-content"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="step-panel" id="step-panel-4">
-                <div class="panel-head">
-                    <div>
-                        <h3>Kịch bản rủi ro & thời điểm thanh lý</h3>
-                    </div>
-                </div>
-
-                <div class="analysis-layout">
-                    <div class="chart-side">
-                        <div class="chart-card">
-                            <canvas id="riskChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="content-side">
-                        <div class="text-card">
-                            <h4>Khuyến nghị phòng thủ</h4>
-                            <div id="riskReport" class="report-content"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="bottom-metrics">
-                <div class="metric-box">
-                    <label>Điểm hòa vốn</label>
-                    <h3 id="breakevenVal">--</h3>
-                </div>
-                <div class="metric-box">
-                    <label>ROE dự kiến / 3 năm</label>
-                    <h3 id="roeVal">--</h3>
-                </div>
-                <div class="metric-box">
-                    <label>Nhận định tổng quan</label>
-                    <h3 id="finalDecision">--</h3>
-                </div>
-            </section>
-        </main>
-    </div>
-
     <script src="script.js"></script>
 </body>
+<footer
+    style="text-align: center; padding: 20px; font-size: 0.9rem; color: #1d0197; font-size: medium; font-family: 'Times New Roman', Times, serif;">
+    <p>&copy; 2026 by ĐamTQ. All rights reserved.</p>
 
 </html>

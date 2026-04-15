@@ -1,622 +1,480 @@
-const POLICY_MATRIX = {
-  htls70: { 18: 0.035, 24: 0.08, 30: 0.135, 36: 0.195 },
-  htls80: { 18: 0.055, 24: 0.105, 30: 0.175, 36: 0.25 },
-};
+(function () {
+  "use strict";
 
-const moneyT = (v) =>
-  new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(v) +
-  " Tỷ";
+  // ---------- CONSTANTS & STATE ----------
+  const DEPOSIT = 200_000_000;
+  let currentBasePrice = 7.4e9;
+  let activePlanId = "full";
+  let cashflowChart, growthChart, comparisonChart;
+  let calcTimeout = null;
+  let isLoading = false;
 
-const moneyM = (v) =>
-  new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(v) +
-  " Triệu/tháng";
-
-const percent = (v) => `${v.toFixed(1)}%`;
-
-let capitalChart = null;
-let cashflowChart = null;
-let growthChart = null;
-let riskChart = null;
-
-window.addEventListener("load", () => {
-  bindEvents();
-  setTimeout(() => {
-    const loader = document.getElementById("loader");
-    loader.style.opacity = "0";
-    setTimeout(() => {
-      loader.style.display = "none";
-      toggleHTLSFields();
-      runAnalysis();
-    }, 450);
-  }, 700);
-});
-
-function bindEvents() {
-  document.getElementById("analyzeBtn").addEventListener("click", runAnalysis);
-
-  document.getElementById("investMethod").addEventListener("change", () => {
-    toggleHTLSFields();
-    runAnalysis();
-  });
-
-  document.getElementById("growthRange").addEventListener("input", (e) => {
-    document.getElementById("growthLabel").innerText = `${e.target.value}%`;
-    runAnalysis();
-  });
-
-  document
-    .getElementById("stressGrowthRange")
-    .addEventListener("input", (e) => {
-      document.getElementById("stressGrowthLabel").innerText =
-        `${e.target.value}%`;
-      runAnalysis();
-    });
-
-  [
-    "basePrice",
-    "htlsTime",
-    "floatRate",
-    "loanYears",
-    "roomCount",
-    "rentPerRoom",
-    "occupancyRate",
-    "operatingCost",
-    "applyGifts",
-  ].forEach((id) => {
-    const el = document.getElementById(id);
-    el.addEventListener("input", runAnalysis);
-    el.addEventListener("change", runAnalysis);
-  });
-
-  document.querySelectorAll(".step-btn").forEach((btn) => {
-    btn.addEventListener("click", () => activateStep(Number(btn.dataset.step)));
-  });
-}
-
-function activateStep(step) {
-  document.querySelectorAll(".step-btn").forEach((btn) => {
-    btn.classList.toggle("active", Number(btn.dataset.step) === step);
-  });
-
-  document.querySelectorAll(".step-panel").forEach((panel) => {
-    panel.classList.remove("active");
-  });
-
-  const target = document.getElementById(`step-panel-${step}`);
-  if (target) {
-    target.classList.add("active");
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}
-
-function toggleHTLSFields() {
-  const method = document.getElementById("investMethod").value;
-  const isLoan = method.startsWith("htls");
-  document.querySelectorAll(".htls-only").forEach((el) => {
-    el.style.display = isLoan ? "block" : "none";
-  });
-}
-
-function calcPolicy(basePrice, method, htlsTime) {
-  let finalPrice = basePrice;
-  let requiredEquity = basePrice;
-  let loanRatio = 0;
-  let supportMonths = 0;
-  let note = "";
-
-  if (method === "tts") {
-    finalPrice = basePrice * (1 - 0.075);
-    requiredEquity = finalPrice;
-    note = "Thanh toán sớm, chiết khấu trực tiếp 7.5%";
-  } else if (method === "gian24") {
-    finalPrice = basePrice * 1.1;
-    requiredEquity = finalPrice;
-    note = "Thanh toán giãn 24 tháng, cộng biên giá 10%";
-  } else if (method === "gian36") {
-    finalPrice = basePrice * 1.15;
-    requiredEquity = finalPrice;
-    note = "Thanh toán giãn 36 tháng, cộng biên giá 15%";
-  } else if (method.startsWith("htls")) {
-    const premium = POLICY_MATRIX[method][htlsTime];
-    finalPrice = basePrice * (1 + premium);
-    loanRatio = method === "htls70" ? 0.7 : 0.8;
-    requiredEquity = finalPrice * (1 - loanRatio);
-    supportMonths = Number(htlsTime);
-    note = `Vay ${loanRatio * 100}% với HTLS 0% trong ${supportMonths} tháng`;
-  }
-
-  return { finalPrice, requiredEquity, loanRatio, supportMonths, note };
-}
-
-function calcMonthlyPayment(principalT, annualRate, years) {
-  const principalM = principalT * 1000;
-  const r = annualRate / 100 / 12;
-  const n = years * 12;
-
-  if (n <= 0) return 0;
-  if (r === 0) return principalM / n;
-  return (principalM * r) / (1 - Math.pow(1 + r, -n));
-}
-
-function calcBreakEvenMonths(initialEquityT, netMonthlyM) {
-  if (netMonthlyM <= 0) return null;
-  return Math.ceil((initialEquityT * 1000) / netMonthlyM);
-}
-
-function monthsToYMD(months) {
-  if (months === null) return "Chưa hòa vốn";
-  const y = Math.floor(months / 12);
-  const m = months % 12;
-  return `${y} năm ${m} tháng 15 ngày`;
-}
-
-function runAnalysis() {
-  const basePrice = Number(document.getElementById("basePrice").value || 0);
-  const method = document.getElementById("investMethod").value;
-  const htlsTime = Number(document.getElementById("htlsTime").value || 0);
-  const floatRate = Number(document.getElementById("floatRate").value || 0);
-  const loanYears = Number(document.getElementById("loanYears").value || 0);
-  const growthRate = Number(document.getElementById("growthRange").value || 0);
-  const stressGrowthRate = Number(
-    document.getElementById("stressGrowthRange").value || 0,
+  // DOM elements
+  const totalPriceInput = document.getElementById("totalPrice");
+  const displayLand = document.getElementById("displayLand");
+  const displayBuild = document.getElementById("displayBuild");
+  const planSelector = document.getElementById("planSelector");
+  const holdingYearsInput = document.getElementById("holdingYears");
+  const growthRateInput = document.getElementById("growthRate");
+  const rentalYieldInput = document.getElementById("rentalYield");
+  const cashflowStartMonthInput = document.getElementById("cashflowStartMonth");
+  const calculateBtn = document.getElementById("calculateBtn");
+  const resultsPanel = document.getElementById("resultsPanel");
+  const selectedPlanTag = document.getElementById("selectedPlanTag");
+  const scheduleTableBody = document.getElementById("scheduleTableBody");
+  const totalPlanCostSpan = document.getElementById("totalPlanCost");
+  const yearsHoldingSpan = document.getElementById("yearsHoldingSpan");
+  const futureValueSpan = document.getElementById("futureValue");
+  const totalRentalIncomeSpan = document.getElementById("totalRentalIncome");
+  const totalCostDisplaySpan = document.getElementById("totalCostDisplay");
+  const netProfitSpan = document.getElementById("netProfit");
+  const roiPercentageSpan = document.getElementById("roiPercentage");
+  const analysisTextDiv = document.getElementById("analysisText");
+  const prosTextSpan = document.getElementById("prosText");
+  const consTextSpan = document.getElementById("consText");
+  const bestPlanRecommendation = document.getElementById(
+    "bestPlanRecommendation",
   );
-  const roomCount = Number(document.getElementById("roomCount").value || 0);
-  const rentPerRoom = Number(document.getElementById("rentPerRoom").value || 0);
-  const occupancyRate = Number(
-    document.getElementById("occupancyRate").value || 0,
-  );
-  const operatingCost = Number(
-    document.getElementById("operatingCost").value || 0,
-  );
-  const applyGifts = document.getElementById("applyGifts").checked;
+  const validationMsg = document.getElementById("validationMessage");
+  const quickComparisonRow = document.getElementById("quickComparisonRow");
 
-  const policy = calcPolicy(basePrice, method, htlsTime);
-  const isLoan = method.startsWith("htls");
-
-  let equityT = policy.requiredEquity;
-
-  if (applyGifts) {
-    const giftT = 0.1 + basePrice * 0.009;
-    equityT = Math.max(0, equityT - giftT);
-  }
-
-  const grossRentM = roomCount * rentPerRoom * (occupancyRate / 100);
-  const netOperatingM = grossRentM - operatingCost;
-  const loanPrincipalT = isLoan ? policy.finalPrice * policy.loanRatio : 0;
-  const monthlyPaymentM = isLoan
-    ? calcMonthlyPayment(loanPrincipalT, floatRate, loanYears)
-    : 0;
-  const netMonthlyAfterDebtM = isLoan
-    ? netOperatingM - monthlyPaymentM
-    : netOperatingM;
-
-  const asset36T = policy.finalPrice * Math.pow(1 + growthRate / 100, 3);
-  const profit36T = asset36T - policy.finalPrice;
-
-  let accumulatedCash36M = 0;
-  for (let i = 1; i <= 36; i++) {
-    if (isLoan) {
-      accumulatedCash36M +=
-        i <= policy.supportMonths ? netOperatingM : netMonthlyAfterDebtM;
-    } else {
-      accumulatedCash36M += netOperatingM;
-    }
-  }
-
-  const totalReturn36T = profit36T + accumulatedCash36M / 1000;
-  const roe = equityT > 0 ? (totalReturn36T / equityT) * 100 : 0;
-  const breakEvenMonths = calcBreakEvenMonths(
-    equityT,
-    isLoan ? netMonthlyAfterDebtM : netOperatingM,
-  );
-
-  updateSummary({
-    equityT,
-    policyNote: policy.note,
-    asset36T,
-    profit36T,
-    netMonthlyAfterDebtM,
-    netOperatingM,
-    monthlyPaymentM,
-    breakEvenMonths,
-    roe,
-    isLoan,
-    supportMonths: policy.supportMonths,
-  });
-
-  renderCapitalChart(policy, equityT);
-  renderCashflowChart(
-    policy.supportMonths,
-    netOperatingM,
-    monthlyPaymentM,
-    isLoan,
-  );
-  renderGrowthChart(policy.finalPrice, growthRate);
-  renderRiskChart(policy.finalPrice, growthRate, stressGrowthRate);
-
-  renderCapitalReport(policy, equityT, isLoan);
-  renderCashflowReport(
-    netOperatingM,
-    monthlyPaymentM,
-    netMonthlyAfterDebtM,
-    isLoan,
-    policy.supportMonths,
-  );
-  renderGrowthReport(asset36T, profit36T, roe, totalReturn36T);
-  renderRiskReport(
-    stressGrowthRate,
-    floatRate,
-    netMonthlyAfterDebtM,
-    isLoan,
-    breakEvenMonths,
-  );
-}
-
-function updateSummary(data) {
-  document.getElementById("equityVal").innerText = moneyT(data.equityT);
-  document.getElementById("policyNote").innerText = data.policyNote;
-
-  document.getElementById("asset36Val").innerText = moneyT(data.asset36T);
-  document.getElementById("profit36Val").innerText =
-    `Thặng dư tài sản: +${moneyT(data.profit36T)}`;
-
-  document.getElementById("netMonthlyVal").innerText = moneyM(
-    data.isLoan ? data.netMonthlyAfterDebtM : data.netOperatingM,
-  );
-
-  document.getElementById("loanPressureNote").innerText = data.isLoan
-    ? "Đã bao gồm áp lực trả nợ sau HTLS"
-    : "Không có nghĩa vụ vay, dòng tiền thuần vận hành";
-
-  document.getElementById("monthlyPaymentVal").innerText = data.isLoan
-    ? moneyM(data.monthlyPaymentM)
-    : "0 Triệu/tháng";
-
-  document.getElementById("paymentModeNote").innerText = data.isLoan
-    ? `Phát sinh sau ${data.supportMonths} tháng HTLS`
-    : "Không sử dụng đòn bẩy tín dụng";
-
-  document.getElementById("breakevenVal").innerText = monthsToYMD(
-    data.breakEvenMonths,
-  );
-  document.getElementById("roeVal").innerText = percent(data.roe);
-
-  let finalDecision = "Cần xem thêm";
-  if (data.isLoan) {
-    if (data.netMonthlyAfterDebtM > 0 && data.roe >= 60)
-      finalDecision = "Nên giữ trung hạn";
-    else if (data.netMonthlyAfterDebtM > 0)
-      finalDecision = "Có thể đầu tư chọn lọc";
-    else finalDecision = "Cần cơ cấu lại phương án";
-  } else {
-    if (data.roe >= 40) finalDecision = "Chiến lược an toàn tốt";
-    else finalDecision = "Phù hợp nhà đầu tư phòng thủ";
-  }
-
-  document.getElementById("finalDecision").innerText = finalDecision;
-}
-
-function renderCapitalChart(policy, equityT) {
-  const ctx = document.getElementById("capitalChart").getContext("2d");
-  if (capitalChart) capitalChart.destroy();
-
-  const debtPart = policy.finalPrice - policy.requiredEquity;
-  const actualEquity = equityT;
-
-  capitalChart = new Chart(ctx, {
-    type: "doughnut",
-    data: {
-      labels: ["Vốn thực tế", "Phần vay / chênh lệch vốn"],
-      datasets: [
-        {
-          data: [actualEquity, Math.max(policy.finalPrice - actualEquity, 0)],
-          backgroundColor: ["#4fa9ff", "#dceeff"],
-          borderWidth: 0,
-          hoverOffset: 6,
-        },
-      ],
+  // Plan definitions
+  const planDefinitions = [
+    {
+      id: "full",
+      name: "Thanh toán sớm",
+      icon: "fa-bolt",
+      short: "CK 7.5%",
+      defaultStartMonth: 9,
     },
-    options: {
-      cutout: "68%",
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: "bottom",
-          labels: {
-            color: "#27445f",
-            font: { weight: "700" },
+    {
+      id: "standard",
+      name: "Tiến độ chuẩn",
+      icon: "fa-calendar-check",
+      short: "Không vay",
+      defaultStartMonth: 12,
+    },
+    {
+      id: "deferred24",
+      name: "Giãn 24 tháng",
+      icon: "fa-hourglass-half",
+      short: "+10%",
+      defaultStartMonth: 24,
+    },
+    {
+      id: "deferred36",
+      name: "Giãn 36 tháng",
+      icon: "fa-hourglass-end",
+      short: "+15%",
+      defaultStartMonth: 36,
+    },
+    {
+      id: "loan70",
+      name: "Vay 70%",
+      icon: "fa-hand-holding-dollar",
+      short: "HTLS 0% 24m",
+      defaultStartMonth: 12,
+    },
+    {
+      id: "loan80",
+      name: "Vay 80%",
+      icon: "fa-coins",
+      short: "HTLS 0% 24m",
+      defaultStartMonth: 12,
+    },
+  ];
+
+  // ---------- HELPER: Update land/build display ----------
+  function updateLandBuildDisplay() {
+    const total = parseFloat(totalPriceInput.value) * 1e9;
+    if (isNaN(total) || total <= 0) return;
+    currentBasePrice = total;
+    displayLand.textContent = ((total * 0.7) / 1e9).toFixed(2);
+    displayBuild.textContent = ((total * 0.3) / 1e9).toFixed(2);
+  }
+  totalPriceInput.addEventListener("input", updateLandBuildDisplay);
+  updateLandBuildDisplay();
+
+  // ---------- RENDER PLAN CARDS ----------
+  function renderPlanCards() {
+    planSelector.innerHTML = "";
+    planDefinitions.forEach((def) => {
+      const card = document.createElement("label");
+      card.className = "plan-card" + (def.id === activePlanId ? " active" : "");
+      card.innerHTML = `<input type="radio" name="paymentPlan" value="${def.id}" ${def.id === activePlanId ? "checked" : ""}>
+          <div class="plan-icon"><i class="fas ${def.icon}"></i></div>
+          <div class="plan-name">${def.name}</div>
+          <div class="plan-price">${def.short}</div>`;
+      card.addEventListener("click", (e) => {
+        if (e.target.tagName !== "INPUT")
+          card.querySelector("input").checked = true;
+        document
+          .querySelectorAll(".plan-card")
+          .forEach((c) => c.classList.remove("active"));
+        card.classList.add("active");
+        activePlanId = def.id;
+        cashflowStartMonthInput.value = def.defaultStartMonth;
+        debouncedRecalculate();
+      });
+      planSelector.appendChild(card);
+    });
+  }
+  renderPlanCards();
+
+  // ---------- CALCULATION LOGIC (unchanged core) ----------
+  function calculatePaymentSchedule(planId, basePrice) {
+    const landPrice = basePrice * 0.7;
+    const buildPrice = basePrice * 0.3;
+    let schedule = [],
+      totalCost = 0,
+      pros = "",
+      cons = "";
+
+    if (planId === "full") {
+      const discounted = basePrice * 0.925;
+      totalCost = discounted;
+      schedule = [
+        { phase: "Cọc", amount: DEPOSIT },
+        { phase: "15 ngày (50%)", amount: discounted * 0.5 },
+        { phase: "30 ngày (50%)", amount: discounted * 0.5 },
+      ];
+      pros = "Chiết khấu sâu 7.5%, không lãi vay.";
+      cons = "Áp lực tài chính lớn ngay đầu.";
+    } else if (planId === "standard") {
+      totalCost = basePrice;
+      schedule = [{ phase: "Cọc", amount: DEPOSIT }];
+      [0.15, 0.15, 0.15, 0.15, 0.15, 0.1].forEach((p) =>
+        schedule.push({ phase: `Đất - ${p * 100}%`, amount: landPrice * p }),
+      );
+      schedule.push({
+        phase: "Xây dựng (sau 24-36 tháng)",
+        amount: buildPrice,
+      });
+      pros = "Giữ tài sản sớm, trả tiền xây sau.";
+      cons = "Không chiết khấu.";
+    } else if (planId === "deferred24") {
+      totalCost = basePrice * 1.1;
+      const landTotal = landPrice * 1.1;
+      const monthly = (landTotal - DEPOSIT) / 24;
+      schedule = [{ phase: "Cọc", amount: DEPOSIT }];
+      for (let i = 1; i <= 24; i++)
+        schedule.push({ phase: `Tháng ${i}/24 - Đất`, amount: monthly });
+      schedule.push({ phase: "Xây dựng (trả sau)", amount: buildPrice * 1.1 });
+      pros = "Dòng tiền nhẹ, trả đều 24 tháng.";
+      cons = "Tổng chi phí +10%.";
+    } else if (planId === "deferred36") {
+      totalCost = basePrice * 1.15;
+      const landTotal = landPrice * 1.15;
+      const monthly = (landTotal - DEPOSIT) / 36;
+      schedule = [{ phase: "Cọc", amount: DEPOSIT }];
+      for (let i = 1; i <= 36; i++)
+        schedule.push({ phase: `Tháng ${i}/36 - Đất`, amount: monthly });
+      schedule.push({ phase: "Xây dựng (trả sau)", amount: buildPrice * 1.15 });
+      pros = "Áp lực thấp nhất, trả chậm 36 tháng.";
+      cons = "Giá tăng 15%.";
+    } else if (planId === "loan70") {
+      const loanAmount = basePrice * 0.7,
+        ownCapital = basePrice - loanAmount;
+      const interest = loanAmount * 0.09 * 3;
+      totalCost = basePrice + interest;
+      schedule = [
+        { phase: "Cọc", amount: DEPOSIT },
+        { phase: "Vốn tự có còn lại", amount: ownCapital - DEPOSIT },
+        { phase: "Vay NH 70% (0% lãi 24m)", amount: loanAmount },
+        {
+          phase: "Lãi vay dự kiến (3 năm 9%)",
+          amount: interest,
+          note: "Ước tính",
+        },
+      ];
+      pros = "Đòn bẩy cao, 2 năm đầu không áp lực.";
+      cons = "Sau năm 5 áp lực trả gốc+lãi.";
+    } else if (planId === "loan80") {
+      const loanAmount = basePrice * 0.8,
+        ownCapital = basePrice - loanAmount;
+      const interest = loanAmount * 0.09 * 3;
+      totalCost = basePrice + interest;
+      schedule = [
+        { phase: "Cọc", amount: DEPOSIT },
+        { phase: "Vốn tự có còn lại", amount: ownCapital - DEPOSIT },
+        { phase: "Vay NH 80% (HTLS 0% 24m)", amount: loanAmount },
+        {
+          phase: "Lãi vay dự kiến (3 năm 9%)",
+          amount: interest,
+          note: "Ước tính",
+        },
+      ];
+      pros = "Vốn tự có thấp nhất (~1.48 tỷ).";
+      cons = "Tổng chi phí cao hơn do lãi vay.";
+    }
+    return { schedule, totalCost, pros, cons };
+  }
+
+  function computeInvestment(
+    planId,
+    basePrice,
+    holdingYears,
+    growthRate,
+    rentalYieldPercent,
+    cashflowStartMonth,
+  ) {
+    const { schedule, totalCost, pros, cons } = calculatePaymentSchedule(
+      planId,
+      basePrice,
+    );
+    const futureValue =
+      basePrice * Math.pow(1 + growthRate / 100, holdingYears);
+    const monthlyRent = (basePrice * (rentalYieldPercent / 100)) / 12;
+    const totalMonths = holdingYears * 12;
+    let monthsRentReceived = Math.max(0, totalMonths - cashflowStartMonth);
+    const totalRental = monthlyRent * monthsRentReceived;
+    const netProfit = futureValue + totalRental - totalCost;
+    const roi = (netProfit / totalCost) * 100;
+    return {
+      schedule,
+      totalCost,
+      pros,
+      cons,
+      futureValue,
+      totalRental,
+      netProfit,
+      roi,
+      monthlyRent,
+    };
+  }
+
+  // ---------- VALIDATION ----------
+  function validateInputs() {
+    let valid = true;
+    let msg = "";
+    if (
+      isNaN(parseFloat(totalPriceInput.value)) ||
+      parseFloat(totalPriceInput.value) <= 0
+    ) {
+      msg = "Giá bán không hợp lệ.";
+      valid = false;
+    }
+    if (parseFloat(holdingYearsInput.value) < 1) {
+      msg = "Số năm nắm giữ tối thiểu 1.";
+      valid = false;
+    }
+    validationMsg.textContent = msg;
+    return valid;
+  }
+
+  // ---------- RENDER UI & CHARTS ----------
+  function renderCharts(basePrice, holdingYears, growthRate, monthlyRent) {
+    const years = [],
+      cashflows = [],
+      growthValues = [];
+    let val = basePrice;
+    for (let y = 1; y <= holdingYears; y++) {
+      years.push(`Năm ${y}`);
+      cashflows.push(monthlyRent * 12);
+      val *= 1 + growthRate / 100;
+      growthValues.push(val);
+    }
+    const ctx1 = document.getElementById("cashflowChart").getContext("2d");
+    if (cashflowChart) cashflowChart.destroy();
+    cashflowChart = new Chart(ctx1, {
+      type: "line",
+      data: {
+        labels: years,
+        datasets: [
+          {
+            label: "Dòng tiền thuê",
+            data: cashflows,
+            borderColor: "#2a4b7c",
+            backgroundColor: "rgba(42,75,124,0.05)",
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          tooltip: {
+            callbacks: { label: (ctx) => `${ctx.raw.toFixed(2)} tỷ` },
           },
         },
       },
-    },
-  });
-}
+    });
 
-function renderCashflowChart(
-  supportMonths,
-  netOperatingM,
-  monthlyPaymentM,
-  isLoan,
-) {
-  const ctx = document.getElementById("cashflowChart").getContext("2d");
-  if (cashflowChart) cashflowChart.destroy();
-
-  const labels = Array.from({ length: 12 }, (_, i) => `T${i + 1}`);
-  const operating = labels.map(() => netOperatingM);
-  const debt = labels.map((_, i) => {
-    if (!isLoan) return 0;
-    return i + 1 <= Math.min(supportMonths, 12) ? 0 : monthlyPaymentM;
-  });
-  const net = operating.map((v, i) => v - debt[i]);
-
-  cashflowChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: "Dòng tiền khai thác",
-          data: operating,
-          backgroundColor: "#7ec8ff",
-          borderRadius: 10,
-        },
-        {
-          type: "bar",
-          label: "Trả nợ ngân hàng",
-          data: debt,
-          backgroundColor: "#ffb0bf",
-          borderRadius: 10,
-        },
-        {
-          type: "line",
-          label: "Dòng tiền sau nợ",
-          data: net,
-          borderColor: "#19b97b",
-          backgroundColor: "#19b97b",
-          tension: 0.35,
-          pointRadius: 4,
-          borderWidth: 3,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: {
-          labels: { color: "#27445f", font: { weight: "700" } },
+    const ctx2 = document.getElementById("growthChart").getContext("2d");
+    if (growthChart) growthChart.destroy();
+    growthChart = new Chart(ctx2, {
+      type: "line",
+      data: {
+        labels: years,
+        datasets: [
+          {
+            label: "Giá trị BĐS",
+            data: growthValues,
+            borderColor: "#0f7b4e",
+            tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          tooltip: {
+            callbacks: { label: (ctx) => `${(ctx.raw / 1e9).toFixed(2)} tỷ` },
+          },
         },
       },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#7188a3" } },
-        y: {
-          grid: { color: "rgba(79,169,255,0.08)" },
-          ticks: { color: "#7188a3" },
+    });
+
+    const planIds = [
+      "full",
+      "standard",
+      "deferred24",
+      "deferred36",
+      "loan70",
+      "loan80",
+    ];
+    const costs = planIds.map(
+      (id) => calculatePaymentSchedule(id, basePrice).totalCost / 1e9,
+    );
+    const ctx3 = document.getElementById("comparisonChart").getContext("2d");
+    if (comparisonChart) comparisonChart.destroy();
+    comparisonChart = new Chart(ctx3, {
+      type: "bar",
+      data: {
+        labels: ["Full", "Chuẩn", "Giãn24", "Giãn36", "Vay70%", "Vay80%"],
+        datasets: [
+          {
+            label: "Tổng chi phí (tỷ)",
+            data: costs,
+            backgroundColor: "#3a6b92",
+            borderRadius: 8,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          tooltip: {
+            callbacks: { label: (ctx) => `${ctx.raw.toFixed(2)} tỷ` },
+          },
         },
       },
-    },
-  });
-}
-
-function renderGrowthChart(startPrice, growthRate) {
-  const ctx = document.getElementById("growthChart").getContext("2d");
-  if (growthChart) growthChart.destroy();
-
-  const labels = ["Hiện tại", "Năm 1", "Năm 2", "Năm 3"];
-  const values = [
-    startPrice,
-    startPrice * Math.pow(1 + growthRate / 100, 1),
-    startPrice * Math.pow(1 + growthRate / 100, 2),
-    startPrice * Math.pow(1 + growthRate / 100, 3),
-  ];
-  const profit = values.map((v) => v - startPrice);
-
-  growthChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: "Giá trị tài sản",
-          data: values,
-          backgroundColor: ["#d7f0ff", "#9fd8ff", "#6fc3ff", "#359eff"],
-          borderRadius: 10,
-        },
-        {
-          type: "line",
-          label: "Thặng dư",
-          data: profit,
-          borderColor: "#58d2c8",
-          backgroundColor: "#58d2c8",
-          borderWidth: 3,
-          pointRadius: 4,
-          tension: 0.35,
-          yAxisID: "y1",
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: {
-          labels: { color: "#27445f", font: { weight: "700" } },
-        },
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#7188a3" } },
-        y: {
-          grid: { color: "rgba(79,169,255,0.08)" },
-          ticks: { color: "#7188a3" },
-        },
-        y1: {
-          position: "right",
-          grid: { display: false },
-          ticks: { color: "#19b97b" },
-        },
-      },
-    },
-  });
-}
-
-function renderRiskChart(startPrice, baseGrowth, stressGrowth) {
-  const ctx = document.getElementById("riskChart").getContext("2d");
-  if (riskChart) riskChart.destroy();
-
-  const labels = ["0", "1Y", "2Y", "3Y", "4Y", "5Y"];
-  const base = labels.map(
-    (_, i) => startPrice * Math.pow(1 + baseGrowth / 100, i),
-  );
-  const stress = labels.map(
-    (_, i) => startPrice * Math.pow(1 + stressGrowth / 100, i),
-  );
-
-  riskChart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Kịch bản cơ sở",
-          data: base,
-          borderColor: "#4fa9ff",
-          backgroundColor: "#4fa9ff",
-          borderWidth: 3,
-          tension: 0.35,
-          pointRadius: 4,
-        },
-        {
-          label: "Kịch bản thận trọng",
-          data: stress,
-          borderColor: "#ef647f",
-          backgroundColor: "#ef647f",
-          borderWidth: 3,
-          tension: 0.35,
-          pointRadius: 4,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: {
-          labels: { color: "#27445f", font: { weight: "700" } },
-        },
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#7188a3" } },
-        y: {
-          grid: { color: "rgba(79,169,255,0.08)" },
-          ticks: { color: "#7188a3" },
-        },
-      },
-    },
-  });
-}
-
-function renderCapitalReport(policy, equityT, isLoan) {
-  const box = document.getElementById("capitalReport");
-  box.innerHTML = `
-    <p>Khách hàng cần chuẩn bị <strong>${moneyT(equityT)}</strong> vốn tự có thực tế để sở hữu tài sản theo phương án hiện tại.</p>
-    <p>Giá vốn sau khi áp dụng chính sách đang ở mức <strong>${moneyT(policy.finalPrice)}</strong>. ${policy.note}.</p>
-    <div class="report-block">
-      <p><strong>Nhận định:</strong> ${
-        isLoan
-          ? "Phương án vay giúp giảm áp lực vốn đầu vào và tạo đòn bẩy sở hữu, nhưng cần quản trị kỹ giai đoạn sau hỗ trợ lãi suất."
-          : "Phương án không vay phù hợp với khách hàng ưu tiên an toàn vốn, giảm biến động tài chính và kiểm soát rủi ro tốt hơn."
-      }</p>
-    </div>
-  `;
-}
-
-function renderCashflowReport(
-  netOperatingM,
-  monthlyPaymentM,
-  netMonthlyAfterDebtM,
-  isLoan,
-  supportMonths,
-) {
-  const box = document.getElementById("cashflowReport");
-  box.innerHTML = `
-    <p>Dòng tiền khai thác ròng trước nợ dự kiến đạt khoảng <strong>${moneyM(netOperatingM)}</strong>.</p>
-    <p>${
-      isLoan
-        ? `Sau ${supportMonths} tháng HTLS, khách hàng sẽ phát sinh nghĩa vụ trả nợ khoảng <strong>${moneyM(monthlyPaymentM)}</strong>, khi đó dòng tiền sau nợ còn lại khoảng <strong>${moneyM(netMonthlyAfterDebtM)}</strong>.`
-        : "Do không sử dụng đòn bẩy vay, toàn bộ dòng tiền thuần sẽ được giữ lại để bù vốn và tối ưu hiệu quả khai thác."
-    }</p>
-    <div class="report-block ${isLoan && netMonthlyAfterDebtM < 0 ? "danger" : ""}">
-      <p><strong>Nhận định:</strong> ${
-        isLoan
-          ? netMonthlyAfterDebtM > 0
-            ? "Cấu trúc dòng tiền sau nợ đang ở trạng thái tích cực, phù hợp để tư vấn theo hướng khai thác bền vững."
-            : "Dòng tiền sau nợ đang âm, vì vậy cần nhấn mạnh với khách hàng rằng lợi nhuận sẽ phụ thuộc nhiều vào tăng giá tài sản hơn là vận hành."
-          : "Dòng tiền vận hành đang là điểm mạnh chính của phương án này."
-      }</p>
-    </div>
-  `;
-}
-
-function renderGrowthReport(asset36T, profit36T, roe, totalReturn36T) {
-  const box = document.getElementById("growthReport");
-  box.innerHTML = `
-    <p>Ở kịch bản cơ sở, giá trị tài sản sau 36 tháng dự kiến đạt <strong>${moneyT(asset36T)}</strong>, tạo phần thặng dư tài sản khoảng <strong>${moneyT(profit36T)}</strong>.</p>
-    <p>Khi cộng thêm dòng tiền tích lũy, tổng hiệu quả dự phóng của phương án đạt khoảng <strong>${percent(roe)}</strong> trên vốn thực góp.</p>
-    <div class="report-block">
-      <p><strong>Nhận định:</strong> ${
-        roe >= 80
-          ? "Hiệu suất vốn nổi bật, có thể tư vấn như một phương án tăng trưởng mạnh."
-          : roe >= 40
-            ? "Hiệu suất vốn tốt, phù hợp với nhà đầu tư trung hạn."
-            : "Hiệu suất vốn ở mức thận trọng, nên tư vấn theo hướng bảo toàn vốn và chọn điểm vào hợp lý."
-      }</p>
-    </div>
-  `;
-}
-
-function renderRiskReport(
-  stressGrowthRate,
-  floatRate,
-  netMonthlyAfterDebtM,
-  isLoan,
-  breakEvenMonths,
-) {
-  const box = document.getElementById("riskReport");
-
-  let riskText = `
-    <p>Trong kịch bản thận trọng, tăng trưởng chỉ còn khoảng <strong>${percent(stressGrowthRate)}</strong>/năm. Khi đó, khách hàng cần theo dõi chặt tốc độ tăng giá, tỷ lệ lấp đầy và chi phí vốn.</p>
-  `;
-
-  if (isLoan) {
-    riskText += `
-      <p>Với lãi suất sau HTLS khoảng <strong>${percent(floatRate)}</strong>, áp lực tài chính sau hỗ trợ sẽ là biến số quan trọng nhất.</p>
-      <div class="report-block ${netMonthlyAfterDebtM < 0 ? "danger" : "warn"}">
-        <p><strong>Khuyến nghị:</strong> ${
-          netMonthlyAfterDebtM > 0
-            ? "Có thể tiếp tục nắm giữ nếu công suất khai thác duy trì tốt và thị trường đi đúng kỳ vọng."
-            : "Nếu lãi suất duy trì cao và dòng tiền âm kéo dài, nên cân nhắc tái cơ cấu hoặc thanh lý sớm khi thị trường đạt mốc giá phù hợp, tránh gồng lỗ quá sâu."
-        }</p>
-      </div>
-    `;
-  } else {
-    riskText += `
-      <div class="report-block">
-        <p><strong>Khuyến nghị:</strong> Phương án không vay có sức phòng thủ tốt hơn, nhưng vẫn cần theo dõi biến động giá bán lại để tối ưu chu kỳ chốt lời.</p>
-      </div>
-    `;
+    });
   }
 
-  riskText += `
-    <div class="report-block">
-      <p><strong>Điểm hòa vốn dòng tiền:</strong> ${monthsToYMD(breakEvenMonths)}.</p>
-    </div>
-  `;
+  function updateQuickComparison(basePrice) {
+    const allPlans = planDefinitions.map((def) => {
+      const { totalCost } = calculatePaymentSchedule(def.id, basePrice);
+      return { id: def.id, name: def.name, cost: totalCost };
+    });
+    allPlans.sort((a, b) => a.cost - b.cost);
+    const bestCost = allPlans[0];
+    let html = `<span style="font-weight:600;"><i class="fas fa-medal"></i> Chi phí thấp nhất: ${bestCost.name} (${(bestCost.cost / 1e9).toFixed(2)} tỷ)</span>`;
+    html += ` <span class="comparison-badge badge-best"><i class="fas fa-crown"></i> Tối ưu</span>`;
+    quickComparisonRow.innerHTML = html;
+  }
 
-  box.innerHTML = riskText;
-}
+  function renderResults(planId) {
+    if (!validateInputs()) return;
+    const totalPrice = parseFloat(totalPriceInput.value) * 1e9;
+    const holdingYears = parseFloat(holdingYearsInput.value) || 5;
+    const growthRate = parseFloat(growthRateInput.value) || 8;
+    const rentalYield = parseFloat(rentalYieldInput.value) || 5;
+    let cashflowStart = parseInt(cashflowStartMonthInput.value);
+    if (isNaN(cashflowStart)) cashflowStart = 0;
+
+    const result = computeInvestment(
+      planId,
+      totalPrice,
+      holdingYears,
+      growthRate,
+      rentalYield,
+      cashflowStart,
+    );
+    const planDef = planDefinitions.find((d) => d.id === planId);
+    selectedPlanTag.textContent = `${planDef.name} • ${planDef.short}`;
+
+    let tableHtml = `<tr><th>Giai đoạn</th><th>Số tiền</th></tr>`;
+    result.schedule.forEach((item) => {
+      tableHtml += `<tr><td>${item.phase} ${item.note ? "<br><small>" + item.note + "</small>" : ""}</td><td>${(item.amount / 1e9).toFixed(3)} tỷ</td></tr>`;
+    });
+    scheduleTableBody.innerHTML = tableHtml;
+
+    totalPlanCostSpan.textContent = (result.totalCost / 1e9).toFixed(2);
+    yearsHoldingSpan.textContent = holdingYears;
+    futureValueSpan.textContent = (result.futureValue / 1e9).toFixed(2) + " tỷ";
+    totalRentalIncomeSpan.textContent =
+      (result.totalRental / 1e9).toFixed(2) + " tỷ";
+    totalCostDisplaySpan.textContent =
+      (result.totalCost / 1e9).toFixed(2) + " tỷ";
+    netProfitSpan.textContent = (result.netProfit / 1e9).toFixed(2) + " tỷ";
+    roiPercentageSpan.textContent = result.roi.toFixed(2) + "%";
+    prosTextSpan.textContent = result.pros;
+    consTextSpan.textContent = result.cons;
+
+    const profit = result.netProfit / 1e9;
+    let analysis =
+      profit > 0
+        ? `✅ Lợi nhuận dương ${profit.toFixed(2)} tỷ, ROI ${result.roi.toFixed(1)}%. `
+        : `⚠️ Lợi nhuận âm. `;
+    analysis += `Giá trị BĐS sau ${holdingYears} năm đạt ${(result.futureValue / 1e9).toFixed(2)} tỷ.`;
+    analysisTextDiv.textContent = analysis;
+
+    const bestCostPlan = planDefinitions
+      .map((d) => ({
+        id: d.id,
+        cost: calculatePaymentSchedule(d.id, totalPrice).totalCost,
+      }))
+      .sort((a, b) => a.cost - b.cost)[0];
+    const bestPlanName = planDefinitions.find(
+      (d) => d.id === bestCostPlan.id,
+    ).name;
+    bestPlanRecommendation.innerHTML = `<i class="fas fa-thumbs-up"></i> Phương án tối ưu chi phí: <strong>${bestPlanName}</strong> (${(bestCostPlan.cost / 1e9).toFixed(2)} tỷ)`;
+
+    renderCharts(totalPrice, holdingYears, growthRate, result.monthlyRent);
+    updateQuickComparison(totalPrice);
+    resultsPanel.style.display = "block";
+    resultsPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  // ---------- REAL-TIME + DEBOUNCE ----------
+  function debouncedRecalculate() {
+    if (calcTimeout) clearTimeout(calcTimeout);
+    const btnSpan = calculateBtn.querySelector("span");
+    const originalText = btnSpan.textContent;
+    btnSpan.innerHTML = `<span class="loading-indicator"></span> Đang tính...`;
+    calculateBtn.disabled = true;
+    calcTimeout = setTimeout(() => {
+      const selectedRadio = document.querySelector(
+        'input[name="paymentPlan"]:checked',
+      );
+      if (selectedRadio) activePlanId = selectedRadio.value;
+      renderResults(activePlanId);
+      btnSpan.textContent = originalText;
+      calculateBtn.disabled = false;
+      calcTimeout = null;
+    }, 300);
+  }
+
+  // Attach real-time listeners
+  [
+    totalPriceInput,
+    holdingYearsInput,
+    growthRateInput,
+    rentalYieldInput,
+    cashflowStartMonthInput,
+  ].forEach((el) => el.addEventListener("input", debouncedRecalculate));
+  calculateBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    debouncedRecalculate();
+  });
+
+  // Initialize
+  window.addEventListener("load", () => {
+    setTimeout(() => {
+      renderResults(activePlanId);
+    }, 80);
+  });
+})();
